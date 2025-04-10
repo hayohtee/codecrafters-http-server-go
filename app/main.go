@@ -66,7 +66,7 @@ func handleConn(conn net.Conn) error {
 			return fmt.Errorf("failed to handle request to %s: %w", path, err)
 		}
 	case path == "/user-agent":
-		if err := userAgentHandler(conn); err != nil {
+		if err := userAgentHandler(conn, tp); err != nil {
 			return fmt.Errorf("failed to handle request to %s: %w", path, err)
 		}
 	default:
@@ -76,13 +76,15 @@ func handleConn(conn net.Conn) error {
 	return nil
 }
 
-func userAgentHandler(conn net.Conn) error {
-	tp := textproto.NewReader(bufio.NewReader(conn))
-
+func userAgentHandler(conn net.Conn, tp *textproto.Reader) error {
 	headers, err := tp.ReadMIMEHeader()
 	if err != nil {
 		return fmt.Errorf("failed to read MIME header: %w", err)
 	}
+
+	userAgent := headers.Get("User-Agent")
+	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(userAgent), userAgent)
+	conn.Write([]byte(response))
 
 	return nil
 }
