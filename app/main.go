@@ -3,15 +3,21 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/textproto"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 func main() {
+	var app application
+	flag.StringVar(&app.directory, "directory", "/tmp/", "The directory to check for files")
+	flag.Parse()
+
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
@@ -28,14 +34,18 @@ func main() {
 		}
 		go func() {
 			defer conn.Close()
-			if err := handleConn(conn); err != nil {
+			if err := app.handleConn(conn); err != nil {
 				log.Println("error handling connection:", err)
 			}
 		}()
 	}
 }
 
-func handleConn(conn net.Conn) error {
+type application struct {
+	directory string
+}
+
+func (app application) handleConn(conn net.Conn) error {
 	tp := textproto.NewReader(bufio.NewReader(conn))
 
 	// Read the request line
@@ -61,37 +71,65 @@ func handleConn(conn net.Conn) error {
 	switch {
 	case path == "/":
 		conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n\r\n"))
+	case strings.HasPrefix(path, "/files/"):
+		if err := app.fileHandler(conn, path); err != nil {
+			return fmt.Errorf("failed to handle request to %s: %w", path, err)
+		}
 	case strings.HasPrefix(path, "/echo/"):
-		if err := echoHandler(conn, path); err != nil {
+		if err := app.echoHandler(conn, path); err != nil {
 			return fmt.Errorf("failed to handle request to %s: %w", path, err)
 		}
 	case path == "/user-agent":
-		if err := userAgentHandler(conn, tp); err != nil {
+		if err := app.userAgentHandler(conn, tp); err != nil {
 			return fmt.Errorf("failed to handle request to %s: %w", path, err)
 		}
 	default:
-		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		statusNotFoundResponse(conn)
 	}
 
 	return nil
 }
 
-func userAgentHandler(conn net.Conn, tp *textproto.Reader) error {
+func (app application) userAgentHandler(conn net.Conn, tp *textproto.Reader) error {
 	headers, err := tp.ReadMIMEHeader()
 	if err != nil {
 		return fmt.Errorf("failed to read MIME header: %w", err)
 	}
 
 	userAgent := headers.Get("User-Agent")
-	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(userAgent), userAgent)
-	conn.Write([]byte(response))
-
+	statusOKResponse(conn, "text/plain", []byte(userAgent))
 	return nil
 }
 
-func echoHandler(conn net.Conn, path string) error {
-	word := strings.TrimPrefix(path, "/echo/")
-	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(word), word)
-	conn.Write([]byte(response))
+func (app application) fileHandler(conn net.Conn, urlPath string) error {
+	filename := strings.TrimPrefix(urlPath, "/files/")
+	path := filepath.Join(app.directory, filename)
+	file, err := os.ReadFile(path)
+	if err != nil {
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			statusNotFoundResponse(conn)
+			return nil
+		default:
+			return err
+		}
+	}
+
+	statusOKResponse(conn, "application/octet-stream", file)
 	return nil
+}
+
+func (app application) echoHandler(conn net.Conn, path string) error {
+	word := strings.TrimPrefix(path, "/echo/")
+	statusOKResponse(conn, "text/plain", []byte(word))
+	return nil
+}
+
+func statusNotFoundResponse(conn net.Conn) {
+	conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+}
+
+func statusOKResponse(conn net.Conn, contentType string, body []byte) {
+	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n%s", contentType, len(body), string(body))
+	conn.Write([]byte(response))
 }
