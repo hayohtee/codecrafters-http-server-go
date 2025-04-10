@@ -32,6 +32,6 @@ func main() {
 }
 
 func handleConn(conn net.Conn) error {
-	_, err := conn.Write([]byte("HTTP/1.1 200 \r\n\r\n\r\n"))
+	_, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n\r\n"))
 	return err
 }
