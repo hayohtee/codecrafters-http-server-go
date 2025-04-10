@@ -55,10 +55,13 @@ func handleConn(conn net.Conn) error {
 	}
 
 	// Check if the URL is valid
-	if requestLine[1] != "/" {
+	if !strings.HasPrefix(requestLine[1], "/echo/") && requestLine[1] != "/" {
 		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 		return nil
 	}
-	conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+
+	word := strings.TrimPrefix(requestLine[1], "/echo/")
+	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s", len(word), word)
+	conn.Write([]byte(response))
 	return nil
 }
