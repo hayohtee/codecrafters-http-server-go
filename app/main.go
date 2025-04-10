@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -31,7 +34,31 @@ func main() {
 	}
 }
 
-func handleConn(conn net.Conn) error {
-	_, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n\r\n"))
-	return err
+func handleConn(conn net.Conn)(conn net.Conn) error {
+	scanner := bufio.NewScanner(conn)
+
+	// Read the request line
+	if !scanner.Scan() {
+		return errors.New("failed to read request line")
+	}
+	header := scanner.Text()
+
+	// Check if the request line is empty
+	if header == "" {
+		return errors.New("empty request header")
+	}
+	requestLine := strings.Split(header, " ")
+
+	// Check if the request line is valid
+	if len(requestLine) != 3 {
+		return errors.New("invalid request line")
+	}
+
+	// Check if the URL is valid
+	if requestLine[1] != "/" {
+		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		return nil
+	}
+	conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+	return nil
 }
