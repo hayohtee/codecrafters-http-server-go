@@ -34,7 +34,7 @@ func main() {
 	}
 }
 
-func handleConn(conn net.Conn)(conn net.Conn) error {
+func handleConn(conn net.Conn) error {
 	scanner := bufio.NewScanner(conn)
 
 	// Read the request line
